@@ -1,0 +1,2827 @@
+openapi: 3.0.3
+info:
+  title: Mining Unjeong Salon Website API (Self-hosted)
+  version: 1.0.0
+  description: "미닝(mining) 운정점 — 홍보/소개 웹사이트용 API.\n- Public: 방문자 읽기 전용 컨텐츠 제공\n- Admin: 인증 기반 CRUD + 변경 이력(Revision) + 롤백\n\
+    - Theme: dark/light (default dark)\n- i18n: ko-KR, en-US\n\nIdempotency:\n- Admin의 모든 변경 요청(POST/PUT/PATCH/DELETE)은 `Idempotency-Key`\
+    \ 헤더를 지원/권장합니다.\n- 동일 Key + 동일 요청 해시 => 이전 응답 재사용\n- 동일 Key + 다른 요청 해시 => 409 IDEMPOTENCY_CONFLICT\n\nTimeout/Retry (권장):\n\
+    - GET(읽기) 요청: 네트워크 오류 시 지수 백오프(예: 250ms, 500ms, 1s)로 최대 2회 재시도 권장\n- Admin 변경 요청: `Idempotency-Key`를 포함한 경우에만 재시도 허용(최대\
+    \ 2회)\n- 파일 업로드: 클라이언트는 재시도 시 동일 파일의 중복 업로드가 발생할 수 있으므로, 업로드 후 entity 연결 단계에서 idempotency 적용 권장\n\n\n    Media upload\
+    \ dedupe:\n    - 파일 업로드는 `sha256` 기반 중복 체크를 우선 권장합니다.\n    - `GET /admin/media/by-hash/{sha256}`로 업로드 없이 기존 MediaAsset을\
+    \ 조회할 수 있습니다.\n"
+servers:
+- url: http://localhost:8080/api
+  description: Local dev
+- url: https://{host}/api
+  description: Production (self-hosted)
+  variables:
+    host:
+      default: example.com
+tags:
+- name: System
+- name: Setup
+- name: Auth
+- name: Public
+- name: Admin
+- name: Media
+- name: Designers
+- name: Gallery
+- name: Styles
+- name: Reviews
+- name: Revisions
+- name: Integrations
+x-constants:
+  locales:
+    supported:
+    - ko-KR
+    - en-US
+    default: ko-KR
+  theme:
+    supported:
+    - dark
+    - light
+    default: dark
+  upload:
+    max_bytes: 10485760
+    allowed_content_types:
+    - image/jpeg
+    - image/png
+    - image/webp
+    - image/heic
+  idempotency:
+    ttl_seconds: 86400
+  pagination:
+    default_limit: 24
+    max_limit: 100
+  rate_limit:
+    login_per_ip_per_minute: 10
+  revisions:
+    retention:
+      max_per_entity: 50
+      max_age_days: 90
+x-error-codes:
+- code: VALIDATION_ERROR
+  http_status: 400
+- code: AUTH_REQUIRED
+  http_status: 401
+- code: AUTH_INVALID_CREDENTIALS
+  http_status: 401
+- code: AUTH_REFRESH_INVALID
+  http_status: 401
+- code: FORBIDDEN
+  http_status: 403
+- code: NOT_FOUND
+  http_status: 404
+- code: CONFLICT
+  http_status: 409
+- code: VERSION_CONFLICT
+  http_status: 409
+- code: IDEMPOTENCY_CONFLICT
+  http_status: 409
+- code: SETUP_ALREADY_DONE
+  http_status: 409
+- code: RATE_LIMITED
+  http_status: 429
+- code: MEDIA_UNSUPPORTED_TYPE
+  http_status: 415
+- code: MEDIA_TOO_LARGE
+  http_status: 413
+- code: INTERNAL_ERROR
+  http_status: 500
+x-state-machines:
+  RefreshSession:
+    states:
+    - ACTIVE
+    - ROTATED
+    - REVOKED
+    - EXPIRED
+    transitions:
+    - from: ACTIVE
+      to: ROTATED
+      true: refresh_rotation
+    - from: ACTIVE
+      to: REVOKED
+      true: logout
+    - from: ROTATED
+      to: REVOKED
+      true: security_revoke
+    - from: ACTIVE
+      to: EXPIRED
+      true: ttl_elapsed
+  RevisionPolicy:
+    notes:
+    - RevisionEntry는 immutable
+    - restore는 "snapshot 적용 + 새 RevisionEntry 생성(restore_of_revision_id 설정)"으로만 수행
+x-db:
+  engine: sqlite
+  tables:
+    admin_users:
+      columns:
+        id:
+          type: text
+          pk: true
+        username:
+          type: text
+          unique: true
+          not_null: true
+        password_hash:
+          type: text
+          not_null: true
+        display_name:
+          type: text
+          not_null: false
+        locale_preference:
+          type: text
+          not_null: true
+          default: ko-KR
+        created_at:
+          type: text
+          not_null: true
+        last_login_at:
+          type: text
+          not_null: false
+    refresh_sessions:
+      columns:
+        id:
+          type: text
+          pk: true
+        admin_user_id:
+          type: text
+          not_null: true
+          fk: admin_users.id
+        token_hash:
+          type: text
+          not_null: true
+          unique: true
+        status:
+          type: text
+          not_null: true
+          default: ACTIVE
+        rotated_from_id:
+          type: text
+          not_null: false
+          fk: refresh_sessions.id
+        created_at:
+          type: text
+          not_null: true
+        expires_at:
+          type: text
+          not_null: true
+        revoked_at:
+          type: text
+          not_null: false
+        user_agent:
+          type: text
+          not_null: false
+        ip:
+          type: text
+          not_null: false
+    site_settings:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        updated_at:
+          type: text
+          not_null: true
+    home_page:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        updated_at:
+          type: text
+          not_null: true
+    about_page:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        updated_at:
+          type: text
+          not_null: true
+    designer_profiles:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        is_primary:
+          type: integer
+          not_null: true
+          default: 0
+        sort_order:
+          type: integer
+          not_null: true
+          default: 0
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        created_at:
+          type: text
+          not_null: true
+        updated_at:
+          type: text
+          not_null: true
+        deleted_at:
+          type: text
+          not_null: false
+    gallery_items:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        published:
+          type: integer
+          not_null: true
+          default: 1
+        featured:
+          type: integer
+          not_null: true
+          default: 0
+        sort_order:
+          type: integer
+          not_null: false
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        created_at:
+          type: text
+          not_null: true
+        updated_at:
+          type: text
+          not_null: true
+        deleted_at:
+          type: text
+          not_null: false
+    style_items:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        published:
+          type: integer
+          not_null: true
+          default: 1
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        created_at:
+          type: text
+          not_null: true
+        updated_at:
+          type: text
+          not_null: true
+        deleted_at:
+          type: text
+          not_null: false
+    review_items:
+      columns:
+        id:
+          type: text
+          pk: true
+        json:
+          type: text
+          not_null: true
+        published:
+          type: integer
+          not_null: true
+          default: 1
+        version:
+          type: integer
+          not_null: true
+          default: 1
+        created_at:
+          type: text
+          not_null: true
+        updated_at:
+          type: text
+          not_null: true
+        deleted_at:
+          type: text
+          not_null: false
+    media_assets:
+      columns:
+        id:
+          type: text
+          pk: true
+        storage_key:
+          type: text
+          not_null: true
+          unique: true
+        public_url:
+          type: text
+          not_null: true
+        content_type:
+          type: text
+          not_null: true
+        size_bytes:
+          type: integer
+          not_null: true
+        width:
+          type: integer
+          not_null: false
+        height:
+          type: integer
+          not_null: false
+        purpose:
+          type: text
+          not_null: true
+        alt_text_json:
+          type: text
+          not_null: false
+        created_at:
+          type: text
+          not_null: true
+        sha256:
+          type: text
+          not_null: false
+          unique: true
+    revisions:
+      columns:
+        id:
+          type: text
+          pk: true
+        entity_type:
+          type: text
+          not_null: true
+        entity_id:
+          type: text
+          not_null: true
+        snapshot_json:
+          type: text
+          not_null: true
+        summary_json:
+          type: text
+          not_null: false
+        diff_stats_json:
+          type: text
+          not_null: false
+        actor_admin_user_id:
+          type: text
+          not_null: true
+          fk: admin_users.id
+        restore_of_revision_id:
+          type: text
+          not_null: false
+          fk: revisions.id
+        created_at:
+          type: text
+          not_null: true
+    idempotency_keys:
+      columns:
+        id:
+          type: text
+          pk: true
+        admin_user_id:
+          type: text
+          not_null: true
+          fk: admin_users.id
+        scope:
+          type: text
+          not_null: true
+        key:
+          type: text
+          not_null: true
+        request_hash:
+          type: text
+          not_null: true
+        response_status:
+          type: integer
+          not_null: true
+        response_body_json:
+          type: text
+          not_null: true
+        created_at:
+          type: text
+          not_null: true
+        expires_at:
+          type: text
+          not_null: true
+  indexes:
+  - name: idx_revisions_entity
+    true:
+    - revisions.entity_type
+    - revisions.entity_id
+    - revisions.created_at
+  - name: idx_gallery_published_created
+    true:
+    - gallery_items.published
+    - gallery_items.created_at
+  - name: idx_styles_published_created
+    true:
+    - style_items.published
+    - style_items.created_at
+  - name: idx_reviews_published_created
+    true:
+    - review_items.published
+    - review_items.created_at
+paths:
+  /health:
+    get:
+      tags:
+      - System
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /system/version:
+    get:
+      tags:
+      - System
+      summary: System version/build info
+      operationId: getSystemVersion
+      responses:
+        '200':
+          description: Version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+  /setup/status:
+    get:
+      tags:
+      - Setup
+      summary: First-time setup status (admin exists?)
+      operationId: getSetupStatus
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupStatusResponse'
+  /setup/admin:
+    post:
+      tags:
+      - Setup
+      summary: Create initial admin (one-time)
+      operationId: postSetupAdmin
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetupAdminRequest'
+      responses:
+        '201':
+          description: Admin created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupAdminResponse'
+        '409':
+          description: Setup already done
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Admin login (issues access token + sets refresh cookie)
+      operationId: postAuthLogin
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in
+          headers:
+            Set-Cookie:
+              description: refresh_token cookie (httpOnly)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/refresh:
+    post:
+      tags:
+      - Auth
+      summary: Refresh access token (rotating refresh session)
+      operationId: postAuthRefresh
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      security:
+      - RefreshCookieAuth: []
+      responses:
+        '200':
+          description: Refreshed
+          headers:
+            Set-Cookie:
+              description: rotated refresh_token cookie (httpOnly)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '401':
+          description: Refresh invalid/expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: Logout (revokes refresh session + clears cookie)
+      operationId: postAuthLogout
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Logged out (no content)
+          headers:
+            Set-Cookie:
+              description: clears refresh_token cookie
+              schema:
+                type: string
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/me:
+    get:
+      tags:
+      - Admin
+      summary: Current admin identity
+      operationId: getAdminMe
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMeResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/site:
+    get:
+      tags:
+      - Public
+      summary: Public site settings
+      operationId: getPublicSite
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Site settings
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteSettings'
+  /admin/site:
+    patch:
+      tags:
+      - Admin
+      summary: Update site settings
+      operationId: patchAdminSite
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSiteSettingsRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteSettings'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/home:
+    get:
+      tags:
+      - Public
+      summary: Home page content
+      operationId: getPublicHome
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Home content
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomePage'
+  /admin/home:
+    patch:
+      tags:
+      - Admin
+      summary: Update home page content
+      operationId: patchAdminHome
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateHomePageRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomePage'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/about:
+    get:
+      tags:
+      - Public
+      summary: About page content (brand story + location + designers)
+      operationId: getPublicAbout
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: About content
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AboutPage'
+  /admin/about:
+    patch:
+      tags:
+      - Admin
+      summary: Update about page content
+      operationId: patchAdminAbout
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAboutPageRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AboutPage'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/designers:
+    get:
+      tags:
+      - Designers
+      - Public
+      summary: Public designer profiles (published order)
+      operationId: getPublicDesigners
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Designers
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DesignerProfile'
+  /admin/designers:
+    post:
+      tags:
+      - Designers
+      - Admin
+      summary: Create designer profile
+      operationId: postAdminDesigner
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDesignerProfileRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignerProfile'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+      - Designers
+      - Admin
+      summary: List designer profiles (admin)
+      operationId: getAdminDesigners
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Designers
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DesignerProfile'
+      description: 'Each item includes `version`; clients may build `If-Match: W/"<version>"` from it. Collection-level ETag
+        (if any) is not valid for item PATCH.'
+  /admin/designers/{designerId}:
+    patch:
+      tags:
+      - Designers
+      - Admin
+      summary: Update designer profile
+      operationId: patchAdminDesigner
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - name: designerId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDesignerProfileRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignerProfile'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Designers
+      - Admin
+      summary: Delete designer profile (soft delete)
+      operationId: deleteAdminDesigner
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: designerId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: 'Soft delete: sets deleted_at; can be restored via revision restore.'
+    get:
+      tags:
+      - Designers
+      - Admin
+      summary: Get designer profile (admin)
+      operationId: getAdminDesigner
+      parameters:
+      - &id001
+        $ref: '#/components/parameters/AcceptLanguage'
+      - name: designerId
+        in: path
+        required: true
+        schema:
+          type: string
+      security: &id002
+      - BearerAuth: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignerProfile'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/gallery/items:
+    get:
+      tags:
+      - Gallery
+      - Public
+      summary: Public gallery items (paginated)
+      operationId: getPublicGalleryItems
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Gallery items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedGalleryItems'
+  /admin/gallery/items:
+    post:
+      tags:
+      - Gallery
+      - Admin
+      summary: Create gallery item
+      operationId: postAdminGalleryItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGalleryItemRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryItem'
+    get:
+      tags:
+      - Gallery
+      - Admin
+      summary: List gallery items (admin)
+      operationId: getAdminGalleryItems
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Gallery items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedGalleryItems'
+      description: 'Each item includes `version`; clients may build `If-Match: W/"<version>"` from it. Collection-level ETag
+        (if any) is not valid for item PATCH.'
+  /admin/gallery/items/{galleryItemId}:
+    patch:
+      tags:
+      - Gallery
+      - Admin
+      summary: Update gallery item
+      operationId: patchAdminGalleryItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - name: galleryItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGalleryItemRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryItem'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Gallery
+      - Admin
+      summary: Delete gallery item (soft delete)
+      operationId: deleteAdminGalleryItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: galleryItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: 'Soft delete: sets deleted_at; can be restored via revision restore.'
+    get:
+      tags:
+      - Gallery
+      - Admin
+      summary: Get gallery item (admin)
+      operationId: getAdminGalleryItem
+      parameters:
+      - *id001
+      - name: galleryItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security: *id002
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryItem'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/styles/items:
+    get:
+      tags:
+      - Styles
+      - Public
+      summary: Public style items (all, optionally grouped by category)
+      operationId: getPublicStyleItems
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Style items
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StyleItem'
+  /admin/styles/items:
+    post:
+      tags:
+      - Styles
+      - Admin
+      summary: Create style item
+      operationId: postAdminStyleItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStyleItemRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StyleItem'
+    get:
+      tags:
+      - Styles
+      - Admin
+      summary: List style items (admin)
+      operationId: getAdminStyleItems
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Style items
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StyleItem'
+      description: 'Each item includes `version`; clients may build `If-Match: W/"<version>"` from it. Collection-level ETag
+        (if any) is not valid for item PATCH.'
+  /admin/styles/items/{styleItemId}:
+    patch:
+      tags:
+      - Styles
+      - Admin
+      summary: Update style item
+      operationId: patchAdminStyleItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - name: styleItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStyleItemRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StyleItem'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Styles
+      - Admin
+      summary: Delete style item (soft delete)
+      operationId: deleteAdminStyleItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: styleItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: 'Soft delete: sets deleted_at; can be restored via revision restore.'
+    get:
+      tags:
+      - Styles
+      - Admin
+      summary: Get style item (admin)
+      operationId: getAdminStyleItem
+      parameters:
+      - *id001
+      - name: styleItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security: *id002
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StyleItem'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/reviews/items:
+    get:
+      tags:
+      - Reviews
+      - Public
+      summary: Public reviews (paginated)
+      operationId: getPublicReviewItems
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReviewItems'
+  /admin/reviews/items:
+    post:
+      tags:
+      - Reviews
+      - Admin
+      summary: Create review item
+      operationId: postAdminReviewItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewItemRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewItem'
+    get:
+      tags:
+      - Reviews
+      - Admin
+      summary: List review items (admin)
+      operationId: getAdminReviewItems
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReviewItems'
+      description: 'Each item includes `version`; clients may build `If-Match: W/"<version>"` from it. Collection-level ETag
+        (if any) is not valid for item PATCH.'
+  /admin/reviews/items/{reviewItemId}:
+    patch:
+      tags:
+      - Reviews
+      - Admin
+      summary: Update review item
+      operationId: patchAdminReviewItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+      - name: reviewItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReviewItemRequest'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewItem'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Reviews
+      - Admin
+      summary: Delete review item (soft delete)
+      operationId: deleteAdminReviewItem
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: reviewItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: 'Soft delete: sets deleted_at; can be restored via revision restore.'
+    get:
+      tags:
+      - Reviews
+      - Admin
+      summary: Get review item (admin)
+      operationId: getAdminReviewItem
+      parameters:
+      - *id001
+      - name: reviewItemId
+        in: path
+        required: true
+        schema:
+          type: string
+      security: *id002
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewItem'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /public/booking:
+    get:
+      tags:
+      - Public
+      summary: Booking configuration (naver store link)
+      operationId: getPublicBooking
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Booking config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingConfig'
+  /admin/media:
+    post:
+      tags:
+      - Media
+      - Admin
+      summary: Upload media asset (image) with SHA-256 dedupe
+      operationId: postAdminMediaUpload
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MediaUploadRequest'
+      responses:
+        '201':
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+        '413':
+          description: Too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '200':
+          description: Already exists (sha256 dedupe hit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+      description: If sha256 is provided and already exists, returns 200 with existing asset; otherwise 201.
+  /public/media/{mediaId}:
+    get:
+      tags:
+      - Media
+      - Public
+      summary: Resolve media asset metadata (public)
+      operationId: getPublicMedia
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - name: mediaId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Media asset metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/revisions:
+    get:
+      tags:
+      - Revisions
+      - Admin
+      summary: List revisions (change history)
+      operationId: getAdminRevisions
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - name: entity_type
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/RevisionEntityType'
+      - name: entity_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Revisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRevisions'
+  /admin/revisions/{revisionId}:
+    get:
+      tags:
+      - Revisions
+      - Admin
+      summary: Get revision details
+      operationId: getAdminRevision
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - name: revisionId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionEntry'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/revisions/{revisionId}/restore:
+    post:
+      tags:
+      - Revisions
+      - Admin
+      summary: Restore entity to a given revision snapshot
+      description: |
+        Restores entity state to the selected revision snapshot.
+
+        Restore semantics:
+        - Applies the snapshot via **UPSERT** by `entity_id`.
+          - If the target row is missing, it is inserted.
+          - If the target row is soft-deleted (`deleted_at` set), it is undeleted (`deleted_at=NULL`) and then updated.
+        - The restore action itself is recorded as a new RevisionEntry (`restore_of_revision_id`).
+      operationId: postAdminRevisionRestore
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: revisionId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevisionRestoreRequest'
+      responses:
+        '200':
+          description: Restored (returns the updated entity snapshot)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionRestoreResponse'
+        '404':
+          description: Revision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/gallery/items/reorder:
+    post:
+      tags:
+      - Gallery
+      - Admin
+      summary: Reorder gallery items (batch update sort_order)
+      operationId: postAdminGalleryReorder
+      parameters:
+      - *id001
+      - $ref: '#/components/parameters/IdempotencyKey'
+      security: *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GalleryReorderRequest'
+      responses:
+        '204':
+          description: Reordered
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict / idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/media/by-hash/{sha256}:
+    get:
+      tags:
+      - Media
+      - Admin
+      summary: Find media asset by SHA-256 (dedupe preflight)
+      operationId: getAdminMediaByHash
+      parameters:
+      - *id001
+      - name: sha256
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F]{64}$
+      security: *id002
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    RefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+  headers:
+    ETag:
+      description: Entity tag for optimistic concurrency (If-Match). Derived from entity "version" (e.g., W/"1").
+      schema:
+        type: string
+        example: W/"1"
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+        description: Preferred language (ko-KR or en-US). Defaults to ko-KR.
+        example: ko-KR
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: Idempotency key for safely retrying mutating requests.
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 'Optimistic concurrency control.
+
+        - Use `ETag` from a previous GET/PATCH response.
+
+        - ETag is derived from entity `version` (e.g., `W/"<version>"`).
+
+        - If mismatched, server returns 409 `VERSION_CONFLICT`.'
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 24
+        minimum: 1
+        maximum: 100
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Opaque pagination cursor returned by previous page.
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+    VersionResponse:
+      type: object
+      required:
+      - version
+      properties:
+        version:
+          type: string
+          example: 1.0.0
+        build:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required:
+      - code
+      - message
+      - request_id
+      - timestamp
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    Locale:
+      type: string
+      enum:
+      - ko-KR
+      - en-US
+    Theme:
+      type: string
+      enum:
+      - dark
+      - light
+    LocalizedText:
+      type: object
+      required:
+      - ko-KR
+      properties:
+        ko-KR:
+          type: string
+        en-US:
+          type: string
+    MoneyKRW:
+      type: object
+      required:
+      - amount
+      - currency
+      properties:
+        amount:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          enum:
+          - KRW
+    ExternalLink:
+      type: object
+      required:
+      - label
+      - url
+      - open_in_new_tab
+      properties:
+        label:
+          $ref: '#/components/schemas/LocalizedText'
+        url:
+          type: string
+          format: uri
+        open_in_new_tab:
+          type: boolean
+          default: true
+    SiteSettings:
+      type: object
+      required:
+      - id
+      - brand_name
+      - default_theme
+      - supported_locales
+      - links
+      - version
+      - updated_at
+      properties:
+        id:
+          type: string
+          example: site
+        brand_name:
+          $ref: '#/components/schemas/LocalizedText'
+        brand_tagline:
+          $ref: '#/components/schemas/LocalizedText'
+        default_theme:
+          $ref: '#/components/schemas/Theme'
+        supported_locales:
+          type: array
+          items:
+            $ref: '#/components/schemas/Locale'
+        links:
+          type: object
+          required:
+          - booking
+          - instagram
+          - naver_map
+          properties:
+            booking:
+              $ref: '#/components/schemas/ExternalLink'
+            instagram:
+              $ref: '#/components/schemas/ExternalLink'
+            naver_map:
+              $ref: '#/components/schemas/ExternalLink'
+        business_hours:
+          $ref: '#/components/schemas/LocalizedText'
+        contact_phone:
+          type: string
+        address:
+          $ref: '#/components/schemas/LocalizedText'
+        location_latlng:
+          type: object
+          required:
+          - lat
+          - lng
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    UpdateSiteSettingsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        brand_name:
+          $ref: '#/components/schemas/LocalizedText'
+        brand_tagline:
+          $ref: '#/components/schemas/LocalizedText'
+        default_theme:
+          $ref: '#/components/schemas/Theme'
+        links:
+          type: object
+          properties:
+            booking:
+              $ref: '#/components/schemas/ExternalLink'
+            instagram:
+              $ref: '#/components/schemas/ExternalLink'
+            naver_map:
+              $ref: '#/components/schemas/ExternalLink'
+        business_hours:
+          $ref: '#/components/schemas/LocalizedText'
+        contact_phone:
+          type: string
+        address:
+          $ref: '#/components/schemas/LocalizedText'
+        location_latlng:
+          type: object
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+    Highlight:
+      type: object
+      required:
+      - title
+      - description
+      properties:
+        title:
+          $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        icon_key:
+          type: string
+    HomePage:
+      type: object
+      required:
+      - id
+      - hero_title
+      - hero_subtitle
+      - hero_cta_label
+      - highlights
+      - version
+      - updated_at
+      properties:
+        id:
+          type: string
+          example: home
+        hero_title:
+          $ref: '#/components/schemas/LocalizedText'
+        hero_subtitle:
+          $ref: '#/components/schemas/LocalizedText'
+        hero_media_id:
+          type: string
+        hero_cta_label:
+          $ref: '#/components/schemas/LocalizedText'
+        highlights:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/Highlight'
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    UpdateHomePageRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        hero_title:
+          $ref: '#/components/schemas/LocalizedText'
+        hero_subtitle:
+          $ref: '#/components/schemas/LocalizedText'
+        hero_media_id:
+          type: string
+        hero_cta_label:
+          $ref: '#/components/schemas/LocalizedText'
+        highlights:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/Highlight'
+    LocationBlock:
+      type: object
+      required:
+      - address
+      - naver_map_url
+      properties:
+        address:
+          $ref: '#/components/schemas/LocalizedText'
+        naver_map_url:
+          type: string
+          format: uri
+        transport_hint:
+          $ref: '#/components/schemas/LocalizedText'
+        parking_hint:
+          $ref: '#/components/schemas/LocalizedText'
+        latlng:
+          type: object
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+        phone:
+          type: string
+        business_hours:
+          $ref: '#/components/schemas/LocalizedText'
+    AboutPage:
+      type: object
+      required:
+      - id
+      - brand_story
+      - designer_intro
+      - designer_profile_ids
+      - location_block
+      - version
+      - updated_at
+      properties:
+        id:
+          type: string
+          example: about
+        brand_story:
+          $ref: '#/components/schemas/LocalizedText'
+        designer_intro:
+          $ref: '#/components/schemas/LocalizedText'
+        designer_profile_ids:
+          type: array
+          items:
+            type: string
+        location_block:
+          $ref: '#/components/schemas/LocationBlock'
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    UpdateAboutPageRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        brand_story:
+          $ref: '#/components/schemas/LocalizedText'
+        designer_intro:
+          $ref: '#/components/schemas/LocalizedText'
+        designer_profile_ids:
+          type: array
+          items:
+            type: string
+        location_block:
+          $ref: '#/components/schemas/LocationBlock'
+    MediaPurpose:
+      type: string
+      enum:
+      - HERO
+      - GALLERY
+      - STYLE
+      - PROFILE
+      - MISC
+    MediaAsset:
+      type: object
+      required:
+      - id
+      - public_url
+      - content_type
+      - size_bytes
+      - purpose
+      - created_at
+      properties:
+        id:
+          type: string
+        storage_key:
+          type: string
+        public_url:
+          type: string
+          format: uri
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        purpose:
+          $ref: '#/components/schemas/MediaPurpose'
+        alt_text:
+          $ref: '#/components/schemas/LocalizedText'
+        created_at:
+          type: string
+          format: date-time
+        sha256:
+          type: string
+          pattern: ^[0-9a-fA-F]{64}$
+          description: SHA-256 hex of original uploaded file (if provided).
+    MediaUploadRequest:
+      type: object
+      required:
+      - file
+      - purpose
+      properties:
+        file:
+          type: string
+          format: binary
+        purpose:
+          $ref: '#/components/schemas/MediaPurpose'
+        alt_text:
+          $ref: '#/components/schemas/LocalizedText'
+        sha256:
+          type: string
+          pattern: ^[0-9a-fA-F]{64}$
+          description: Client-computed SHA-256 hex for dedupe (recommended).
+    DesignerProfile:
+      type: object
+      required:
+      - id
+      - display_name
+      - role_title
+      - bio
+      - instagram_url
+      - is_primary
+      - sort_order
+      - version
+      - updated_at
+      properties:
+        id:
+          type: string
+        display_name:
+          $ref: '#/components/schemas/LocalizedText'
+        role_title:
+          $ref: '#/components/schemas/LocalizedText'
+        bio:
+          $ref: '#/components/schemas/LocalizedText'
+        instagram_url:
+          type: string
+          format: uri
+        profile_media_id:
+          type: string
+        is_primary:
+          type: boolean
+        sort_order:
+          type: integer
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+    CreateDesignerProfileRequest:
+      type: object
+      required:
+      - display_name
+      - role_title
+      - bio
+      - instagram_url
+      additionalProperties: false
+      properties:
+        display_name:
+          $ref: '#/components/schemas/LocalizedText'
+        role_title:
+          $ref: '#/components/schemas/LocalizedText'
+        bio:
+          $ref: '#/components/schemas/LocalizedText'
+        instagram_url:
+          type: string
+          format: uri
+        profile_media_id:
+          type: string
+        is_primary:
+          type: boolean
+          default: false
+        sort_order:
+          type: integer
+          default: 0
+    UpdateDesignerProfileRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          $ref: '#/components/schemas/LocalizedText'
+        role_title:
+          $ref: '#/components/schemas/LocalizedText'
+        bio:
+          $ref: '#/components/schemas/LocalizedText'
+        instagram_url:
+          type: string
+          format: uri
+        profile_media_id:
+          type: string
+        is_primary:
+          type: boolean
+        sort_order:
+          type: integer
+    GalleryItem:
+      type: object
+      required:
+      - id
+      - media_id
+      - published
+      - featured
+      - version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+        media_id:
+          type: string
+        caption:
+          $ref: '#/components/schemas/LocalizedText'
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+        published:
+          type: boolean
+          default: true
+        featured:
+          type: boolean
+          default: false
+        sort_order:
+          type: integer
+          nullable: true
+        version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+    CreateGalleryItemRequest:
+      type: object
+      required:
+      - media_id
+      additionalProperties: false
+      properties:
+        media_id:
+          type: string
+        caption:
+          $ref: '#/components/schemas/LocalizedText'
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+        published:
+          type: boolean
+          default: true
+        featured:
+          type: boolean
+          default: false
+        sort_order:
+          type: integer
+          nullable: true
+    UpdateGalleryItemRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        media_id:
+          type: string
+        caption:
+          $ref: '#/components/schemas/LocalizedText'
+        tags:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+        published:
+          type: boolean
+        featured:
+          type: boolean
+        sort_order:
+          type: integer
+          nullable: true
+    PaginatedGalleryItems:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GalleryItem'
+        next_cursor:
+          type: string
+          nullable: true
+    StyleCategory:
+      type: string
+      enum:
+      - CUT
+      - COLOR
+      - PERM
+      - CARE
+      - ETC
+    StyleItem:
+      type: object
+      required:
+      - id
+      - name
+      - price
+      - category
+      - published
+      - version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        price:
+          $ref: '#/components/schemas/MoneyKRW'
+        duration_minutes:
+          type: integer
+          minimum: 1
+        media_id:
+          type: string
+        category:
+          $ref: '#/components/schemas/StyleCategory'
+        published:
+          type: boolean
+          default: true
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+    CreateStyleItemRequest:
+      type: object
+      required:
+      - name
+      - price
+      - category
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        price:
+          $ref: '#/components/schemas/MoneyKRW'
+        duration_minutes:
+          type: integer
+          minimum: 1
+        media_id:
+          type: string
+        category:
+          $ref: '#/components/schemas/StyleCategory'
+        published:
+          type: boolean
+          default: true
+    UpdateStyleItemRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        price:
+          $ref: '#/components/schemas/MoneyKRW'
+        duration_minutes:
+          type: integer
+          minimum: 1
+        media_id:
+          type: string
+        category:
+          $ref: '#/components/schemas/StyleCategory'
+        published:
+          type: boolean
+    ReviewSource:
+      type: string
+      enum:
+      - MANUAL
+      - NAVER
+      - INSTAGRAM
+    ReviewItem:
+      type: object
+      required:
+      - id
+      - author_name
+      - content
+      - source
+      - published
+      - version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+        author_name:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        content:
+          $ref: '#/components/schemas/LocalizedText'
+        source:
+          $ref: '#/components/schemas/ReviewSource'
+        source_url:
+          type: string
+          format: uri
+        published:
+          type: boolean
+          default: true
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+    CreateReviewItemRequest:
+      type: object
+      required:
+      - author_name
+      - content
+      - source
+      additionalProperties: false
+      properties:
+        author_name:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        content:
+          $ref: '#/components/schemas/LocalizedText'
+        source:
+          $ref: '#/components/schemas/ReviewSource'
+        source_url:
+          type: string
+          format: uri
+        published:
+          type: boolean
+          default: true
+    UpdateReviewItemRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        author_name:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        content:
+          $ref: '#/components/schemas/LocalizedText'
+        source:
+          $ref: '#/components/schemas/ReviewSource'
+        source_url:
+          type: string
+          format: uri
+        published:
+          type: boolean
+    PaginatedReviewItems:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewItem'
+        next_cursor:
+          type: string
+          nullable: true
+    BookingConfig:
+      type: object
+      required:
+      - booking_url
+      - open_in_new_tab
+      properties:
+        booking_url:
+          type: string
+          format: uri
+        open_in_new_tab:
+          type: boolean
+          default: true
+        note:
+          $ref: '#/components/schemas/LocalizedText'
+    SetupStatusResponse:
+      type: object
+      required:
+      - setup_required
+      properties:
+        setup_required:
+          type: boolean
+        admin_count:
+          type: integer
+          minimum: 0
+    SetupAdminRequest:
+      type: object
+      required:
+      - username
+      - password
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        display_name:
+          type: string
+          maxLength: 64
+        locale_preference:
+          $ref: '#/components/schemas/Locale'
+    SetupAdminResponse:
+      type: object
+      required:
+      - admin
+      properties:
+        admin:
+          $ref: '#/components/schemas/AdminUser'
+    AdminUser:
+      type: object
+      required:
+      - id
+      - username
+      - locale_preference
+      - created_at
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        display_name:
+          type: string
+        locale_preference:
+          $ref: '#/components/schemas/Locale'
+        created_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+    LoginRequest:
+      type: object
+      required:
+      - username
+      - password
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    AuthTokens:
+      type: object
+      required:
+      - access_token
+      - token_type
+      - expires_in_seconds
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum:
+          - Bearer
+        expires_in_seconds:
+          type: integer
+          minimum: 1
+    LoginResponse:
+      type: object
+      required:
+      - admin
+      - tokens
+      properties:
+        admin:
+          $ref: '#/components/schemas/AdminUser'
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+    RefreshResponse:
+      type: object
+      required:
+      - tokens
+      properties:
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+    AdminMeResponse:
+      type: object
+      required:
+      - admin
+      properties:
+        admin:
+          $ref: '#/components/schemas/AdminUser'
+    RevisionEntityType:
+      type: string
+      enum:
+      - SITE_SETTINGS
+      - HOME_PAGE
+      - ABOUT_PAGE
+      - DESIGNER_PROFILE
+      - GALLERY_ITEM
+      - STYLE_ITEM
+      - REVIEW_ITEM
+      - INSTAGRAM_SETTINGS
+    RevisionEntry:
+      type: object
+      required:
+      - id
+      - entity_type
+      - entity_id
+      - snapshot
+      - actor_admin_user_id
+      - created_at
+      properties:
+        id:
+          type: string
+        entity_type:
+          $ref: '#/components/schemas/RevisionEntityType'
+        entity_id:
+          type: string
+        snapshot:
+          type: object
+          additionalProperties: true
+        summary:
+          $ref: '#/components/schemas/LocalizedText'
+        diff_stats:
+          type: object
+          additionalProperties: true
+        actor_admin_user_id:
+          type: string
+        restore_of_revision_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    PaginatedRevisions:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RevisionEntry'
+        next_cursor:
+          type: string
+          nullable: true
+    RevisionRestoreRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        note:
+          $ref: '#/components/schemas/LocalizedText'
+    RevisionRestoreResponse:
+      type: object
+      required:
+      - entity_type
+      - entity_id
+      - restored_snapshot
+      - new_revision_id
+      properties:
+        entity_type:
+          $ref: '#/components/schemas/RevisionEntityType'
+        entity_id:
+          type: string
+        restored_snapshot:
+          type: object
+          additionalProperties: true
+        new_revision_id:
+          type: string
+    GalleryReorderItem:
+      type: object
+      required:
+      - id
+      - sort_order
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        sort_order:
+          type: integer
+          minimum: 0
+    GalleryReorderRequest:
+      type: object
+      required:
+      - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GalleryReorderItem'

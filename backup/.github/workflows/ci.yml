@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select evidence scope from diff (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/ci_select_scope.sh
+          BASE_REF="${{ github.base_ref && format('origin/{0}', github.base_ref) || 'origin/main' }}"
+          echo "[ci] BASE_REF=${BASE_REF}"
+          eval "$(scripts/ci_select_scope.sh "${BASE_REF}" HEAD)"
+          echo "[ci] EVIDENCE_SCOPE=${EVIDENCE_SCOPE} reason=${SCOPE_REASON}"
+          echo "EVIDENCE_SCOPE=${EVIDENCE_SCOPE}" >> "$GITHUB_ENV"
+          echo "SCOPE_REASON=${SCOPE_REASON}" >> "$GITHUB_ENV"
+
+      - name: Run evidence (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "[ci] EVIDENCE_SCOPE=${EVIDENCE_SCOPE} reason=${SCOPE_REASON}"
+          bash scripts/run_evidence.sh --scope "${EVIDENCE_SCOPE}"
+
+      - name: Validate summary.json (fail-closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "import json; p='evidence/summary.json'; d=json.load(open(p,'r',encoding='utf-8')); assert isinstance(d,dict) and 'pass' in d and 'result' in d; print('[ci] evidence/summary.json OK')"
+          if ! grep -R --line-number -E '"pass"[[:space:]]*:[[:space:]]*true' evidence/ >/dev/null; then
+            echo "No pass:true found under evidence/"
+            exit 1
+          fi

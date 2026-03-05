@@ -1,0 +1,126 @@
+# =========================
+# mining_website .gitignore
+# =========================
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Node / JS tooling ---
+node_modules/
+.pnp.*
+.pnpm-store/
+.turbo/
+.cache/
+.eslintcache
+.stylelintcache
+
+# --- Build outputs ---
+dist/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+coverage/
+.nyc_output/
+storybook-static/
+.vite/
+*.tsbuildinfo
+
+# --- Env / Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+**/secrets/
+
+# --- Runtime / local state ---
+tmp/
+temp/
+.local/
+.localdata/
+data/
+var/
+
+# --- Evidence / artifacts (SSOT는 남기되, 실행 산출물은 제외) ---
+# (정책: 실행 증거/실제 응답/로그/트레이스/HAR 등은 커밋 금지)
+evidence/**/actual/
+evidence/**/logs/
+evidence/**/screenshots/
+evidence/**/downloads/
+evidence/**/tmp/
+evidence/**/.cache/
+evidence/**/summary.json
+evidence/**/output.txt
+
+# raw captures (http bodies/headers/traces)
+*.body.raw.json
+*.headers.raw.json
+*.trace.*
+*.har
+
+# --- Docker / compose local volumes ---
+**/.docker/
+docker-data/
+**/pgdata/
+**/postgres-data/
+
+# --- Python (혹시 있을 경우) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# --- OpenAI / OpenClaw / agent local state (프로젝트에 있으면 제외) ---
+.openclaw/
+**/.openclaw/
+**/.openai/
+**/.agent/
+**/.sessions/
+**/.telemetry/
+
+# --- Media uploads / generated assets (운영 산출물) ---
+uploads/
+public/uploads/
+assets/generated/
+**/*.mp4
+**/*.mov
+**/*.avi
+**/*.mkv
+**/*.psd
+**/*.ai
+
+# --- Misc ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# =========================
+# Keep rules (do NOT ignore)
+# =========================
+# Example keep patterns (필요 시 사용)
+#!evidence/**/README.md
+#!docs/**/*
+#!design/derived/**/*
