@@ -43,7 +43,7 @@ while true; do
     exit 1
   fi
 
-  run_json="$(gh run list --branch "$branch" --limit 1 --json databaseId,status,conclusion,htmlURL,createdAt -q '.[0]')"
+  run_json="$(gh run list --branch "$branch" --limit 1 --json databaseId,status,conclusion,url,createdAt -q '.[0]')"
   if [[ -z "$run_json" || "$run_json" == "null" ]]; then
     echo "[ci_poll] no runs found yet; sleeping..."
     sleep "$interval"
@@ -53,7 +53,7 @@ while true; do
   run_id="$(echo "$run_json" | jq -r '.databaseId')"
   status="$(echo "$run_json" | jq -r '.status')"
   conclusion="$(echo "$run_json" | jq -r '.conclusion')"
-  url="$(echo "$run_json" | jq -r '.htmlURL')"
+  url="$(echo "$run_json" | jq -r '.url')"
 
   echo "[ci_poll] run_id=$run_id status=$status conclusion=$conclusion url=$url"
 
