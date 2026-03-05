@@ -67,6 +67,7 @@
 | action.login | 로그인 | Log in |
 | action.enterEditMode | 편집 모드 | Edit mode |
 | action.exitEditMode | 편집 종료 | Exit edit mode |
+| action.toggleTheme | 테마 전환 | Toggle theme |
 | action.restore | 복원 | Restore |
 | action.viewDetails | 상세 보기 | View details |
 | action.copyLink | 링크 복사 | Copy link |
@@ -115,6 +116,8 @@
 | status.published | 공개 | Published |
 | status.hidden | 숨김 | Hidden |
 | status.adminOnly | 관리자 전용 | Admin only |
+| status.themeDark | 다크 모드 | Dark mode |
+| status.themeLight | 라이트 모드 | Light mode |
 
 ---
 
