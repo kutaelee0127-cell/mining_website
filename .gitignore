@@ -99,6 +99,10 @@ venv/
 **/.sessions/
 **/.telemetry/
 
+# --- OpenCode local state ---
+.opencode/
+**/.opencode/
+
 # --- Media uploads / generated assets (운영 산출물) ---
 uploads/
 public/uploads/
