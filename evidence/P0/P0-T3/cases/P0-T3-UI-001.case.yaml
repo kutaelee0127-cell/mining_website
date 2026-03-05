@@ -1,0 +1,15 @@
+id: P0-T3-UI-001
+name: Theme scaffold baseline file check
+depends_on: []
+request:
+  method: INTERNAL
+  url: local://filesystem
+expect:
+  status: 200
+  assertions:
+    - type: regex
+      expr: "action.toggleTheme"
+    - type: regex
+      expr: "status.themeDark"
+    - type: regex
+      expr: "status.themeLight"
