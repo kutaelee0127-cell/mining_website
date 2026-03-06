@@ -26,3 +26,25 @@ export function patchAdminHome(
     body: pageService.updateHome(body),
   };
 }
+
+export function patchAdminAbout(
+  request: RequestLike,
+  body: { designerTitle?: string; instagramUrl?: string; naverMapUrl?: string },
+) {
+  try {
+    requireAdmin(request);
+  } catch {
+    return {
+      status: 401,
+      body: {
+        code: "AUTH_REQUIRED",
+        message: "Not authenticated",
+      },
+    };
+  }
+
+  return {
+    status: 200,
+    body: pageService.updateAbout(body),
+  };
+}
