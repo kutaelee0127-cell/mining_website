@@ -7,6 +7,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     host: true,
+    allowedHosts: ['kutaelee.iptime.org'],
     proxy: {
       '/api': 'http://localhost:8080',
     },
