@@ -1,0 +1,13 @@
+id: P7-T2-REVERT-001
+name: Revision revert optimistic concurrency
+depends_on: []
+request:
+  method: POST
+  url: /admin/revisions/rev-1/revert
+  headers:
+    Authorization: Bearer token-admin-1
+  body:
+    entityId: home
+    expectedVersion: 1
+expect:
+  status: 200
