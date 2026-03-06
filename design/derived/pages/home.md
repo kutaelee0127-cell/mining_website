@@ -14,7 +14,9 @@ Depends-on: `design/derived/states/app__layout-bento.md`
 ### 1) Hero (XL)
 - Slot: `XL`
 - Content: 배경 이미지 + 한 줄 메세지 + Primary CTA(예약)
+- CTA target: `/booking`
 - Secondary: 위치/영업시간/디자이너 이름(간단)
+- Mobile(360px): CTA is visible in first viewport, no horizontal overflow
 
 ### 2) Highlights (S/M mix)
 - Slot: `S` x 4–6 (모바일에서는 2열)
