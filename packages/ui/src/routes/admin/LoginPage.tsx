@@ -3,9 +3,10 @@ import { useState } from "react";
 export interface LoginPageProps {
   t: (key: string) => string;
   onLogin: (username: string, password: string) => Promise<boolean>;
+  onLoggedIn?: () => void;
 }
 
-export function LoginPage({ t, onLogin }: LoginPageProps) {
+export function LoginPage({ t, onLogin, onLoggedIn }: LoginPageProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
@@ -27,6 +28,9 @@ export function LoginPage({ t, onLogin }: LoginPageProps) {
         onClick={async () => {
           const ok = await onLogin(username, password);
           setError(!ok);
+          if (ok && onLoggedIn) {
+            onLoggedIn();
+          }
         }}
       >
         {t("action.login")}
