@@ -1357,6 +1357,7 @@ paths:
       - Reviews
       - Public
       summary: Public reviews (paginated)
+      description: Public read-only reviews feed including rating/text/source fields.
       operationId: getPublicReviewItems
       parameters:
       - $ref: '#/components/parameters/AcceptLanguage'
