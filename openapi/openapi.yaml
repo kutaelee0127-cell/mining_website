@@ -1754,6 +1754,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/revisions/{id}/revert:
+    post:
+      tags:
+      - Revisions
+      - Admin
+      summary: Revert to target revision with optimistic concurrency
+      operationId: postAdminRevisionRevertById
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Reverted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevertResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/gallery/items/reorder:
     post:
       tags:
@@ -2849,6 +2879,16 @@ components:
           additionalProperties: true
         new_revision_id:
           type: string
+    RevertResponse:
+      type: object
+      required:
+      - revision_id
+      - version
+      properties:
+        revision_id:
+          type: string
+        version:
+          type: integer
     GalleryReorderItem:
       type: object
       required:
