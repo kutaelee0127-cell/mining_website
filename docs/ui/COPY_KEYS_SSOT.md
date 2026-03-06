@@ -68,6 +68,7 @@
 | action.enterEditMode | 편집 모드 | Edit mode |
 | action.exitEditMode | 편집 종료 | Exit edit mode |
 | action.toggleTheme | 테마 전환 | Toggle theme |
+| action.toggleLanguage | 언어 전환 | Toggle language |
 | action.restore | 복원 | Restore |
 | action.viewDetails | 상세 보기 | View details |
 | action.copyLink | 링크 복사 | Copy link |
@@ -141,6 +142,8 @@
 | msg.noRevisions | 변경 이력이 없습니다. | No change history yet. |
 | msg.restoreWarning | 복원하면 현재 내용이 변경됩니다. | Restoring will overwrite current content. |
 | msg.notFound | 페이지를 찾을 수 없습니다. | Page not found. |
+| msg.uploading | 업로드 중… | Uploading… |
+| msg.emptyReviews | 아직 등록된 리뷰가 없습니다. | No reviews yet. |
 
 ---
 
@@ -190,6 +193,7 @@
 | admin.revisions.filterStyles | 스타일 | Styles |
 | admin.revisions.filterReviews | 리뷰 | Reviews |
 | admin.revisions.filterSite | 사이트 설정 | Site settings |
+| admin.history.title | 변경 이력 | Revision history |
 
 ---
 

@@ -16,6 +16,8 @@ const REQUIRED_PREFIXES = [
   "err.",
   "field.",
   "status.",
+  "about.",
+  "admin.",
 ];
 
 function extractRequiredKeys(markdown: string): string[] {
