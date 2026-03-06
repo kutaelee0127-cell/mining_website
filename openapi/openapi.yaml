@@ -1681,6 +1681,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/revisions/{id}:
+    get:
+      tags:
+      - Revisions
+      - Admin
+      summary: Get revision details (id alias)
+      operationId: getAdminRevisionByIdAlias
+      parameters:
+      - $ref: '#/components/parameters/AcceptLanguage'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Revision'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/revisions/{revisionId}/restore:
     post:
       tags:
@@ -2782,6 +2811,9 @@ components:
         created_at:
           type: string
           format: date-time
+    Revision:
+      allOf:
+      - $ref: '#/components/schemas/RevisionEntry'
     PaginatedRevisions:
       type: object
       required:
