@@ -4,7 +4,7 @@ export interface AdminInlineEditorProps {
   t: (key: string) => string;
   title: string;
   subtitle: string;
-  onSave: (next: { title: string; subtitle: string }) => void;
+  onSave: (next: { title: string; subtitle: string }) => Promise<void> | void;
 }
 
 export function AdminInlineEditor({ t, title, subtitle, onSave }: AdminInlineEditorProps) {
@@ -21,7 +21,9 @@ export function AdminInlineEditor({ t, title, subtitle, onSave }: AdminInlineEdi
         {t("field.subtitle")}
         <input value={nextSubtitle} onChange={(event) => setNextSubtitle(event.target.value)} />
       </label>
-      <button type="button" onClick={() => onSave({ title: nextTitle, subtitle: nextSubtitle })}>
+      <button type="button" onClick={async () => {
+        await onSave({ title: nextTitle, subtitle: nextSubtitle });
+      }}>
         {t("action.save")}
       </button>
     </section>

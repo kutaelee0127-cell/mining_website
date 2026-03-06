@@ -1,0 +1,11 @@
+id: P2-T1-NEG-001
+name: visitor cannot write home content
+steps:
+  - request:
+      method: PATCH
+      path: /api/admin/home
+      body:
+        hero_title:
+          ko-KR: Unauthorized write attempt
+    expect:
+      status_in: [401, 403]

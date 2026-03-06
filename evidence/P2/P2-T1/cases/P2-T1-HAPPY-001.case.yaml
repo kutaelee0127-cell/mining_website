@@ -1,0 +1,34 @@
+id: P2-T1-HAPPY-001
+name: admin login then home hero edit persists
+steps:
+  - request:
+      method: POST
+      path: /api/auth/login
+      body:
+        username: admin
+        password: admin1234!
+    expect:
+      status: 200
+      json_has:
+        - access_token
+  - request:
+      method: PATCH
+      path: /api/admin/home
+      auth: bearer_from_step_1
+      body:
+        hero_title:
+          ko-KR: P2-T1 Hero Updated
+          en-US: P2-T1 Hero Updated
+        hero_subtitle:
+          ko-KR: P2-T1 Subtitle Updated
+          en-US: P2-T1 Subtitle Updated
+    expect:
+      status: 200
+  - request:
+      method: GET
+      path: /api/public/home
+    expect:
+      status: 200
+      equals_from_step_2:
+        - hero_title
+        - hero_subtitle
