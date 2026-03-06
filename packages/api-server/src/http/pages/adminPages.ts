@@ -48,3 +48,25 @@ export function patchAdminAbout(
     body: pageService.updateAbout(body),
   };
 }
+
+export function patchAdminBooking(
+  request: RequestLike,
+  body: { bookingUrl?: string; hintKey?: string },
+) {
+  try {
+    requireAdmin(request);
+  } catch {
+    return {
+      status: 401,
+      body: {
+        code: "AUTH_REQUIRED",
+        message: "Not authenticated",
+      },
+    };
+  }
+
+  return {
+    status: 200,
+    body: pageService.updateBooking(body),
+  };
+}

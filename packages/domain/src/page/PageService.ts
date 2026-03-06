@@ -12,6 +12,11 @@ export interface AboutPageData {
   naverMapUrl: string;
 }
 
+export interface BookingPageData {
+  bookingUrl: string;
+  hintKey: string;
+}
+
 const initialHome: HomePageData = {
   heroTitle: "msg.welcome",
   heroSubtitle: "app.brandName",
@@ -24,9 +29,15 @@ const initialAbout: AboutPageData = {
   naverMapUrl: "https://map.naver.com",
 };
 
+const initialBooking: BookingPageData = {
+  bookingUrl: "https://smartstore.naver.com",
+  hintKey: "msg.bookingHint",
+};
+
 export class PageService {
   private home = initialHome;
   private about = initialAbout;
+  private booking = initialBooking;
 
   constructor(private readonly revisions: RevisionService) {}
 
@@ -81,5 +92,29 @@ export class PageService {
     }
 
     return this.about;
+  }
+
+  getBooking(): BookingPageData {
+    return this.booking;
+  }
+
+  updateBooking(input: Partial<Pick<BookingPageData, "bookingUrl" | "hintKey">>): BookingPageData {
+    const summary: string[] = [];
+
+    if (typeof input.bookingUrl === "string" && input.bookingUrl !== this.booking.bookingUrl) {
+      this.booking = { ...this.booking, bookingUrl: input.bookingUrl };
+      summary.push("booking_url");
+    }
+
+    if (typeof input.hintKey === "string" && input.hintKey !== this.booking.hintKey) {
+      this.booking = { ...this.booking, hintKey: input.hintKey };
+      summary.push("booking_hint");
+    }
+
+    if (summary.length > 0) {
+      this.revisions.append(summary);
+    }
+
+    return this.booking;
   }
 }

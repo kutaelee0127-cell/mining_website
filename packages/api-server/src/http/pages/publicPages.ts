@@ -18,6 +18,13 @@ export function getPublicAbout() {
   };
 }
 
+export function getPublicBooking() {
+  return {
+    status: 200,
+    body: pageService.getBooking(),
+  };
+}
+
 export function getAdminRevisions() {
   return {
     status: 200,
