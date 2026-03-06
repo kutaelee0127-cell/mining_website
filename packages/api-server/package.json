@@ -1,0 +1,9 @@
+{
+  "name": "@mining/api-server",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}
