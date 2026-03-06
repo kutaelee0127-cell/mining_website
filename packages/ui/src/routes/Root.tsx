@@ -1,11 +1,26 @@
+import { useMemo, useState } from "react";
 import { AppShell } from "../app/AppShell";
-
-const copy: Record<string, string> = {
-  "action.toggleTheme": "action.toggleTheme",
-  "status.themeDark": "status.themeDark",
-  "status.themeLight": "status.themeLight",
-};
+import { createTranslator, nextLocale, persistLocale, readInitialLocale, type LocaleCode } from "../i18n";
 
 export function Root() {
-  return <AppShell t={(key) => copy[key] ?? key} />;
+  const [locale, setLocale] = useState<LocaleCode>(() => readInitialLocale(typeof window === "undefined" ? null : window.localStorage));
+  const t = useMemo(() => createTranslator(locale), [locale]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          const next = nextLocale(locale);
+          setLocale(next);
+          if (typeof window !== "undefined") {
+            persistLocale(window.localStorage, next);
+          }
+        }}
+      >
+        {t("field.language")}: {locale}
+      </button>
+      <AppShell t={t} />
+    </>
+  );
 }
