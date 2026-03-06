@@ -211,4 +211,14 @@
 - 히어로 문구/소개 텍스트/캡션/리뷰 본문 등은 관리자 편집 컨텐츠(LocalizedText)로 관리합니다.
 - 구현 중 신규 문구가 필요하면 SSOT(이 문서)부터 갱신하고 하드코딩을 금지합니다.
 
+---
+
+## 12) About (about.*)
+
+| key | ko-KR | en-US |
+|---|---|---|
+| about.designer.title | 디자이너 소개 | Designer profile |
+| about.designer.instagram | 인스타그램 | Instagram |
+| about.location.title | 위치 안내 | Location |
+
 끝.

@@ -11,6 +11,13 @@ export function getPublicHome() {
   };
 }
 
+export function getPublicAbout() {
+  return {
+    status: 200,
+    body: pageService.getAbout(),
+  };
+}
+
 export function getAdminRevisions() {
   return {
     status: 200,
