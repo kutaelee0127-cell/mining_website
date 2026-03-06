@@ -1603,6 +1603,12 @@ paths:
       responses:
         '200':
           description: Media asset metadata
+          headers:
+            Cache-Control:
+              description: Public media cache policy
+              schema:
+                type: string
+                example: public, max-age=31536000, immutable
           content:
             application/json:
               schema:
