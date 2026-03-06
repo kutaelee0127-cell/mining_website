@@ -1,0 +1,33 @@
+id: P9-T1-HAPPY-001
+name: all page domains api usable
+steps:
+  - request:
+      method: GET
+      path: /api/public/home
+    expect:
+      status: 200
+  - request:
+      method: GET
+      path: /api/public/about
+    expect:
+      status: 200
+  - request:
+      method: GET
+      path: /api/public/gallery/items
+    expect:
+      status: 200
+  - request:
+      method: GET
+      path: /api/public/styles/items
+    expect:
+      status: 200
+  - request:
+      method: GET
+      path: /api/public/reviews/items
+    expect:
+      status: 200
+  - request:
+      method: GET
+      path: /api/public/booking
+    expect:
+      status: 200

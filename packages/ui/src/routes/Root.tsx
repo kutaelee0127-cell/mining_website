@@ -5,29 +5,17 @@ import { createTranslator, nextLocale, persistLocale, readInitialLocale, type Lo
 import { LoginPage } from "./admin/LoginPage";
 import { HistoryPage } from "./admin/HistoryPage";
 import { HomePage } from "./home/HomePage";
+import { AboutPage } from "./about/AboutPage";
+import { GalleryPage } from "./gallery/GalleryPage";
+import { StylesPage } from "./styles/StylesPage";
+import { ReviewsPage } from "./reviews/ReviewsPage";
+import { BookingPage } from "./booking/BookingPage";
 
 export function Root() {
   const [locale, setLocale] = useState<LocaleCode>(() => readInitialLocale(typeof window === "undefined" ? null : window.localStorage));
   const [isAdmin, setIsAdmin] = useState(false);
   const t = useMemo(() => createTranslator(locale), [locale]);
   const path = typeof window === "undefined" ? "/" : window.location.pathname;
-
-  const [healthOk, setHealthOk] = useState<boolean | null>(null);
-  const [healthTs, setHealthTs] = useState<string | null>(null);
-
-  // Very small runtime proof for QA: show /api/health result on home.
-  useEffect(() => {
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((d) => {
-        setHealthOk(Boolean(d?.ok));
-        setHealthTs(typeof d?.ts === 'string' ? d.ts : null);
-      })
-      .catch(() => {
-        setHealthOk(false);
-        setHealthTs(null);
-      });
-  }, []);
 
   const publicNav = [
     { key: "nav.home", href: "/" },
@@ -53,21 +41,27 @@ export function Root() {
     }
 
     if (path === "/about") {
-      return (
-        <section>
-          <h1>{t("nav.about")}</h1>
-          <p style={{ color: 'var(--muted)' }}>소개 페이지(디자이너/위치/인스타 링크) 콘텐츠는 태스크 단위로 연결됩니다.</p>
-        </section>
-      );
+      return <AboutPage t={t} isAdmin={isAdmin} locale={locale} />;
+    }
+
+    if (path === "/gallery") {
+      return <GalleryPage t={t} isAdmin={isAdmin} />;
+    }
+
+    if (path === "/styles") {
+      return <StylesPage t={t} isAdmin={isAdmin} locale={locale} />;
+    }
+
+    if (path === "/reviews") {
+      return <ReviewsPage t={t} isAdmin={isAdmin} />;
     }
 
     if (path === "/booking") {
-      return (
-        <section>
-          <h1>{t("nav.booking")}</h1>
-          <p style={{ color: 'var(--muted)' }}>예약 CTA 연결은 태스크 단위로 구현됩니다.</p>
-        </section>
-      );
+      return <BookingPage t={t} isAdmin={isAdmin} locale={locale} />;
+    }
+
+    if (path.startsWith("/__admin/")) {
+      return null;
     }
 
     return (

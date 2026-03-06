@@ -1,0 +1,11 @@
+id: P9-T1-NEG-001
+name: unauthorized admin write blocked
+steps:
+  - request:
+      method: PATCH
+      path: /api/admin/about
+      body:
+        designer_intro:
+          ko-KR: unauthorized
+    expect:
+      status_in: [401, 403]

@@ -99,7 +99,7 @@ if [[ "$health_ok" == "true" ]]; then
   token="$(python3 - "${http_dir}/auth_login.json" <<'PY'
 import json,sys
 obj=json.load(open(sys.argv[1],'r',encoding='utf-8'))
-print(obj.get('access_token',''))
+print(obj.get('tokens',{}).get('access_token',''))
 PY
 )"
 fi
