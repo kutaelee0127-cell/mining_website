@@ -1,0 +1,14 @@
+id: P3-T1-UPLOAD-001
+name: Admin image upload baseline
+depends_on: []
+request:
+  method: POST
+  url: /admin/media
+  headers:
+    Content-Type: multipart/form-data
+    Authorization: Bearer token-admin-1
+expect:
+  status: 201
+  assertions:
+    - type: regex
+      expr: "MediaAsset"
