@@ -1,0 +1,14 @@
+id: P1-T1-AUTH-001
+name: Admin login happy path
+depends_on: []
+request:
+  method: POST
+  url: /auth/login
+  body:
+    username: admin
+    password: admin1234!
+expect:
+  status: 200
+  assertions:
+    - type: regex
+      expr: "access_token"
