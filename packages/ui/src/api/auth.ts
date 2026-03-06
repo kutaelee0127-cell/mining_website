@@ -48,10 +48,14 @@ export async function login(username: string, password: string): Promise<boolean
     return false;
   }
 
-  const data = (await response.json()) as { access_token: string; user: AdminIdentity };
-  if (typeof data.access_token === "string" && data.user) {
-    writeAccessToken(data.access_token);
-    session = data.user;
+  const data = (await response.json()) as {
+    tokens?: { access_token?: string };
+    admin?: { id: string; username: string };
+  };
+  const token = data.tokens?.access_token;
+  if (typeof token === "string" && data.admin) {
+    writeAccessToken(token);
+    session = { id: data.admin.id, username: data.admin.username, role: "ADMIN" };
     return true;
   }
 
@@ -89,7 +93,11 @@ export async function me(): Promise<AdminIdentity | null> {
     return null;
   }
 
-  const identity = (await response.json()) as AdminIdentity;
+  const payload = (await response.json()) as { admin?: { id: string; username: string } };
+  if (!payload.admin) {
+    return null;
+  }
+  const identity: AdminIdentity = { id: payload.admin.id, username: payload.admin.username, role: "ADMIN" };
   session = identity;
   return identity;
 }

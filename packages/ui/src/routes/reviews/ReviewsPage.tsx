@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addReview, listReviews, removeReview, type ReviewItemDto } from "../../api/reviews";
+import { addReview, listReviews, removeReview, saveReview, type ReviewItemDto } from "../../api/reviews";
 import { ReviewEditorDrawer } from "../../components/ReviewEditorDrawer";
 
 export interface ReviewsPageProps {
@@ -11,20 +11,17 @@ export function ReviewsPage({ t, isAdmin }: ReviewsPageProps) {
   const [items, setItems] = useState<ReviewItemDto[]>([]);
 
   const reload = async () => {
-    setItems(await listReviews());
+    setItems(await listReviews(isAdmin));
   };
 
   useEffect(() => {
     void reload();
-  }, []);
-
-  if (items.length === 0) {
-    return <p>{t("msg.reviewsEmpty")}</p>;
-  }
+  }, [isAdmin]);
 
   return (
     <main>
       <h1>{t("nav.reviews")}</h1>
+      {items.length === 0 ? <p>{t("msg.reviewsEmpty")}</p> : null}
       {items.map((item) => (
         <article key={item.id}>
           <p aria-label={t("field.rating")}>{item.rating}</p>
@@ -42,6 +39,12 @@ export function ReviewsPage({ t, isAdmin }: ReviewsPageProps) {
               await reload();
             }}
           />
+          <button type="button" onClick={async () => {
+            if (items[0]) {
+              await saveReview(items[0].id, { text: `${items[0].text}*` });
+              await reload();
+            }
+          }}>{t("action.edit")}</button>
           <button type="button" onClick={async () => {
             if (items[0]) {
               await removeReview(items[0].id);
