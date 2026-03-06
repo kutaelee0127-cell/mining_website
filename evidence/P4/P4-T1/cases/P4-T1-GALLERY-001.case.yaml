@@ -1,0 +1,13 @@
+id: P4-T1-GALLERY-001
+name: Gallery admin CRUD baseline
+depends_on: []
+request:
+  method: POST
+  url: /admin/gallery/items
+  headers:
+    Authorization: Bearer token-admin-1
+  body:
+    imageUrl: /public/media/sample
+    title: sample
+expect:
+  status: 201

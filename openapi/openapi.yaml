@@ -1001,6 +1001,7 @@ paths:
       - Gallery
       - Public
       summary: Public gallery items (paginated)
+      description: Visitor read-only gallery feed for responsive grid rendering.
       operationId: getPublicGalleryItems
       parameters:
       - $ref: '#/components/parameters/AcceptLanguage'
