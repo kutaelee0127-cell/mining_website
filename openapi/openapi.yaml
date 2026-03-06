@@ -1555,6 +1555,12 @@ paths:
             schema:
               $ref: '#/components/schemas/MediaUploadRequest'
       responses:
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '201':
           description: Uploaded
           content:

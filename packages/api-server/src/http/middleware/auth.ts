@@ -14,3 +14,8 @@ export function requireAdmin(request: RequestLike): AuthContext {
 
   return { isAdmin: true };
 }
+
+export function isAdminRequest(request: RequestLike): boolean {
+  const token = request.headers["authorization"] ?? "";
+  return token.startsWith("Bearer token-admin-1");
+}
