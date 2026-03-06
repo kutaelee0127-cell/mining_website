@@ -1174,6 +1174,7 @@ paths:
       - Styles
       - Public
       summary: Public style items (all, optionally grouped by category)
+      description: Price values are returned in KRW numeric amount for locale-specific formatting in UI.
       operationId: getPublicStyleItems
       parameters:
       - $ref: '#/components/parameters/AcceptLanguage'
