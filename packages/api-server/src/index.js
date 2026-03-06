@@ -2,7 +2,31 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+let DatabaseSync;
+try {
+  // Node 22+ builtin sqlite (no native deps)
+  ({ DatabaseSync } = require('node:sqlite'));
+} catch {
+  DatabaseSync = null;
+}
+
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+const DATA_DIR = process.env.DATA_DIR || path.resolve(__dirname, '../../../data');
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'mining.sqlite');
+
+function ensureDb() {
+  if (!DatabaseSync) {
+    return { ok: false, reason: 'node:sqlite not available' };
+  }
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const db = new DatabaseSync(DB_PATH);
+  db.exec(`CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+  db.exec(`INSERT OR IGNORE INTO _meta(key,value) VALUES ('schema_version','1');`);
+  db.close();
+  return { ok: true };
+}
+
+const dbStatus = ensureDb();
 
 function readJson(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -17,7 +41,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
 
   if (url.pathname === '/api/health') {
-    const out = { ok: true, ts: new Date().toISOString() };
+    const out = { ok: true, ts: new Date().toISOString(), db: dbStatus };
     return send(res, 200, { 'Content-Type': 'application/json' }, JSON.stringify(out));
   }
 

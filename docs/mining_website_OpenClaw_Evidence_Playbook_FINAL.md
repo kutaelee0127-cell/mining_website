@@ -233,6 +233,58 @@ title: Evidence harness + contract-case runner (YAML → curl/jq) + summary.json
 goal: >
   모든 태스크가 동일 포맷으로 evidence를 생성할 수 있도록
   공통 하네스(케이스 러너/요약 생성)를 제공한다.
+```
+
+#### P0-T5
+```yaml
+piece_id: P0
+task_id: P0-T5
+title: Runtime bootstrap (API+UI+SQLite) — startable from latest main
+goal: >
+  최신 main을 클론한 사람이 "한 번에" 런타임을 띄워 QA/개발할 수 있도록,
+  API 서버 + UI(dev) + SQLite DB 파일 준비를 end-to-end로 고정한다.
+ssot_refs:
+  openapi:
+    - paths./health.get
+  ia_nav:
+    routes:
+      - /
+  copy_keys:
+    - app.brandName
+    - msg.healthOk
+  derived_ui:
+    - design/derived/pages/root.md
+scope:
+  files_max_10:
+    - package.json
+    - scripts/dev.mjs
+    - packages/api-server/src/index.js
+    - packages/ui/package.json
+    - packages/ui/vite.config.ts
+    - packages/ui/src/main.tsx
+    - locales/ko-KR.json
+    - locales/en-US.json
+    - evidence/P0/P0-T5/run.sh
+    - evidence/P0/P0-T5/expected.md
+evidence:
+  commands_3_to_6:
+    - bash evidence/P0/P0-T5/run.sh
+acceptance:
+  - `npm run dev`로 API(:8080) + UI(:5173)가 기동된다.
+  - `data/mining.sqlite` 파일이 생성된다.
+  - /api/health가 200이며 db.ok=true를 반환한다.
+pass_criteria:
+  - evidence/P0/P0-T5/summary.json has pass=true and result=PASS
+```
+
+#### P0-T2
+```yaml
+piece_id: P0
+task_id: P0-T2
+title: Evidence harness + contract-case runner (YAML → curl/jq) + summary.json generator
+goal: >
+  모든 태스크가 동일 포맷으로 evidence를 생성할 수 있도록
+  공통 하네스(케이스 러너/요약 생성)를 제공한다.
 ssot_refs:
   openapi:
     - openapi/openapi.yaml (entire)
