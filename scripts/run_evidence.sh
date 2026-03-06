@@ -5,9 +5,11 @@ set -euo pipefail
 # Creates evidence/summary.json as an aggregate.
 
 scope="full"
+selected_task=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --scope) scope="$2"; shift 2;;
+    --task) selected_task="$2"; shift 2;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -17,10 +19,17 @@ cd "$ROOT"
 
 mkdir -p evidence/actual/logs
 
-echo "[run_evidence] scope=$scope"
+echo "[run_evidence] scope=$scope task=${selected_task:-"-"}"
 
-# Playbook: start with P0 gates. (fail-closed)
+# Playbook: always run P0 gates. If --task provided, run only that task additionally.
 TASKS=("P0/P0-T1" "P0/P0-T2")
+if [[ -n "$selected_task" ]]; then
+  # Avoid duplicating P0 tasks
+  if [[ "$selected_task" != "P0-T1" && "$selected_task" != "P0-T2" ]]; then
+    piece="${selected_task%%-*}"
+    TASKS+=("${piece}/${selected_task}")
+  fi
+fi
 
 passes=0
 fails=0

@@ -36,12 +36,41 @@ jobs:
           echo "EVIDENCE_SCOPE=${EVIDENCE_SCOPE}" >> "$GITHUB_ENV"
           echo "SCOPE_REASON=${SCOPE_REASON}" >> "$GITHUB_ENV"
 
+      - name: Detect Task ID (from PR title/branch)
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TITLE="${{ github.event.pull_request.title }}"
+          BRANCH="${{ github.head_ref }}"
+          echo "[ci] PR title: $TITLE"
+          echo "[ci] PR branch: $BRANCH"
+
+          TASK_ID=""
+          if [[ "$TITLE" =~ \[(P[0-9]+-T[0-9]+)\] ]]; then
+            TASK_ID="${BASH_REMATCH[1]}"
+          elif [[ "$BRANCH" =~ (P[0-9]+-T[0-9]+) ]]; then
+            TASK_ID="${BASH_REMATCH[1]}"
+          fi
+
+          if [[ -z "$TASK_ID" ]]; then
+            echo "[ci] FAIL: could not detect task id from PR title/branch (expected [P?-T?])"
+            exit 1
+          fi
+
+          echo "[ci] TASK_ID=$TASK_ID"
+          echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
+
       - name: Run evidence (fail-closed)
         shell: bash
         run: |
           set -euo pipefail
-          echo "[ci] EVIDENCE_SCOPE=${EVIDENCE_SCOPE} reason=${SCOPE_REASON}"
-          bash scripts/run_evidence.sh --scope "${EVIDENCE_SCOPE}"
+          echo "[ci] EVIDENCE_SCOPE=${EVIDENCE_SCOPE} reason=${SCOPE_REASON} TASK_ID=${TASK_ID:-}"
+          if [[ -n "${TASK_ID:-}" ]]; then
+            bash scripts/run_evidence.sh --scope "${EVIDENCE_SCOPE}" --task "${TASK_ID}"
+          else
+            bash scripts/run_evidence.sh --scope "${EVIDENCE_SCOPE}"
+          fi
 
       - name: Validate summary.json (fail-closed)
         shell: bash
