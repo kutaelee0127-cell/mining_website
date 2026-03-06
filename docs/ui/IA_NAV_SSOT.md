@@ -86,6 +86,8 @@
 ## 3) Navigation Spec (메뉴)
 
 ### 3.1 Public Top Nav (순서 고정)
+> 메뉴 라벨은 하드코딩 금지, 반드시 `COPY_KEYS_SSOT`의 `nav.*` 키를 사용한다.
+
 1) `nav.home` → `/`
 2) `nav.about` → `/about`
 3) `nav.gallery` → `/gallery`

@@ -29,6 +29,7 @@
   "action.enterEditMode": "Edit mode",
   "action.exitEditMode": "Exit edit mode",
   "action.toggleTheme": "Toggle theme",
+  "action.toggleLanguage": "Toggle language",
   "action.restore": "Restore",
   "action.viewDetails": "View details",
   "action.copyLink": "Copy link",
@@ -81,6 +82,8 @@
   "msg.noRevisions": "No change history yet.",
   "msg.restoreWarning": "Restoring will overwrite current content.",
   "msg.notFound": "Page not found.",
+  "msg.uploading": "Uploading…",
+  "msg.emptyReviews": "No reviews yet.",
   "err.unauthorized": "Please log in.",
   "err.forbidden": "You don't have permission.",
   "err.validation": "Please check your input.",
@@ -91,5 +94,9 @@
   "err.server": "Server error occurred.",
   "err.unknown": "Something went wrong.",
   "err.mediaTooLarge": "File is too large.",
-  "err.mediaUnsupported": "Unsupported file type."
+  "err.mediaUnsupported": "Unsupported file type.",
+  "admin.history.title": "Revision history",
+  "about.designer.title": "Designer profile",
+  "about.designer.instagram": "Instagram",
+  "about.location.title": "Location"
 }
